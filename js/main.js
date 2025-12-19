@@ -1,37 +1,34 @@
-// main.js
 import { P_MOVE } from './constants.js';
 import { canMove, checkIllegalDrop } from './gameLogic.js';
 import { generateKifString } from './kifuManager.js';
 
 let board, hands, turn, selected, history, currentIndex, result, isRotated = false, autoPlayTimer = null;
 
-// --- 初期化 ---
+// --- 1. 初期化 ---
 function init() {
     board = Array(9).fill().map(() => Array(9).fill(null));
     hands = { sente: { '歩':0,'香':0,'桂':0,'銀':0,'金':0,'角':0,'飛':0 }, gote: { '歩':0,'香':0,'桂':0,'銀':0,'金':0,'角':0,'飛':0 } };
-    const l1 = ['香','桂','銀','金','玉','金','銀','桂','香'];
-    l1.forEach((p, c) => board[0][c] = {p, owner:'gote'});
+    const setup = ['香','桂','銀','金','玉','金','銀','桂','香'];
+    setup.forEach((p, c) => board[0][c] = {p, owner:'gote'});
     board[1][1] = {p:'飛', owner:'gote'}; board[1][7] = {p:'角', owner:'gote'};
     for(let i=0; i<9; i++) board[2][i] = {p:'歩', owner:'gote'};
     for(let i=0; i<9; i++) board[6][i] = {p:'歩', owner:'sente'};
     board[7][1] = {p:'角', owner:'sente'}; board[7][7] = {p:'飛', owner:'sente'};
-    l1.forEach((p, c) => board[8][c] = {p: p==='玉'?'玉':p, owner:'sente'});
-    turn = 'sente'; selected = null; history = []; result = null; stopAutoPlay();
-    
+    setup.forEach((p, c) => board[8][c] = {p: p==='玉'?'玉':p, owner:'sente'});
+
+    turn = 'sente'; selected = null; history = []; result = null;
     const n = new Date();
-    const dateInput = document.getElementById('date-text');
-    if(dateInput) dateInput.value = `${n.getFullYear()}/${(n.getMonth()+1).toString().padStart(2,'0')}/${n.getDate().toString().padStart(2,'0')}`;
+    document.getElementById('date-text').value = `${n.getFullYear()}/${(n.getMonth()+1).toString().padStart(2,'0')}/${n.getDate().toString().padStart(2,'0')}`;
     
     saveHistory(null, null, null, null, "開始");
     render();
     syncDisplayNames();
 }
 
-// --- 描画系 ---
+// --- 2. 描画・UI更新 ---
 function render() {
     const state = history[currentIndex];
     const boardEl = document.getElementById('board');
-    if(!boardEl) return;
     boardEl.innerHTML = '';
     
     const lastP = (currentIndex > 0) ? state.lastPos : null;
@@ -53,7 +50,7 @@ function render() {
                 dot.className = 'legal-dot';
                 cell.appendChild(dot);
             }
-            if (!result && currentIndex === history.length - 1) cell.onclick = () => { stopAutoPlay(); handleCellClick(r, c); };
+            cell.onclick = () => { if(!result && currentIndex === history.length-1) handleCellClick(r, c); };
             boardEl.appendChild(cell);
         }
     }
@@ -63,19 +60,43 @@ function render() {
     updateKifuList();
 }
 
-// --- 操作・ロジック系 (中略: 元のコードのexecuteMove, saveHistory等) ---
-// ※ 誌面の都合上、重要な架け橋部分を重点的に記述します
+function updateHandUI(owner, handData) {
+    const container = document.querySelector(`#hand-${owner} .hand-container`);
+    container.innerHTML = '';
+    for (const [p, count] of Object.entries(handData)) {
+        if (count > 0) {
+            const el = document.createElement('div');
+            el.className = `hand-piece ${owner==='gote'?'p-flip':''} ${selected?.type==='hand'&&selected.p===p?'selected':''}`;
+            el.innerHTML = `${p}${count>1?count:''}`;
+            el.onclick = (e) => {
+                e.stopPropagation();
+                if (turn === owner && !result && currentIndex === history.length-1) {
+                    selected = (selected?.p === p) ? null : { type: 'hand', p, owner };
+                    render();
+                }
+            };
+            container.appendChild(el);
+        }
+    }
+}
 
+// --- 3. 指し手実行ロジック ---
 function handleCellClick(r, c) {
     const clicked = board[r][c];
     if (selected?.type === 'hand') {
-        if (!clicked && !checkIllegalDrop(board, selected.p, r, c, turn)) executeMove(null, null, r, c, selected.p, true);
-        selected = null;
+        if (!clicked && !checkIllegalDrop(board, selected.p, r, c, turn)) {
+            executeMove(null, null, r, c, selected.p, true);
+            selected = null;
+        }
     } else if (selected) {
-        if (selected.r === r && selected.c === c) selected = null;
-        else if (canMove(board, selected.r, selected.c, r, c, turn)) { executeMove(selected.r, selected.c, r, c, selected.p); selected = null; }
-        else if (clicked && clicked.owner === turn) selected = { r, c, p: clicked.p, type: 'board' };
-        else selected = null;
+        if (selected.r === r && selected.c === c) {
+            selected = null;
+        } else if (canMove(board, selected.r, selected.c, r, c, turn)) {
+            executeMove(selected.r, selected.c, r, c, selected.p);
+            selected = null;
+        } else if (clicked && clicked.owner === turn) {
+            selected = { r, c, p: clicked.p, type: 'board' };
+        }
     } else if (clicked && clicked.owner === turn) {
         selected = { r, c, p: clicked.p, type: 'board' };
     }
@@ -111,50 +132,57 @@ function executeMove(fr, fc, tr, tc, piece, isDrop = false) {
     render();
 }
 
+// --- 4. 共通・補助関数 ---
 function saveHistory(tr, tc, fr, fc, moveStr) {
-    history.push({ 
-        board: JSON.parse(JSON.stringify(board)), 
-        hands: JSON.parse(JSON.stringify(hands)), 
-        lastPos: {r: tr, c: tc}, 
-        moveStr, 
-        turn 
-    });
+    history.push({ board: JSON.parse(JSON.stringify(board)), hands: JSON.parse(JSON.stringify(hands)), lastPos: {r: tr, c: tc}, moveStr, turn });
     currentIndex = history.length - 1;
-}
-
-// --- 他のユーティリティ関数（getLegalMoves, stopAutoPlayなど）もここに配置 ---
-function stopAutoPlay() {
-    if (autoPlayTimer) { clearInterval(autoPlayTimer); autoPlayTimer = null; }
-    const btn = document.getElementById('autoplay-btn');
-    if (btn) btn.textContent = "自動再生 開始";
 }
 
 function getLegalMoves() {
     if (!selected || result || currentIndex !== history.length-1) return [];
     let moves = [];
-    for (let r=0; r<9; r++) {
-        for (let c=0; c<9; c++) {
-            if (selected.type === 'hand') {
-                if (!board[r][c] && !checkIllegalDrop(board, selected.p, r, c, turn, true)) moves.push({r, c});
-            } else {
-                if (canMove(board, selected.r, selected.c, r, c, turn)) moves.push({r, c});
-            }
-        }
+    for (let r=0; r<9; r++) for (let c=0; c<9; c++) {
+        if (selected.type === 'hand') { if (!board[r][c] && !checkIllegalDrop(board, selected.p, r, c, turn, true)) moves.push({r, c}); }
+        else { if (canMove(board, selected.r, selected.c, r, c, turn)) moves.push({r, c}); }
     }
     return moves;
 }
 
-// --- HTMLのonclickに公開する設定 ---
-window.jumpTo = (idx) => { currentIndex = idx; selected = null; render(); };
-window.prevMove = () => { stopAutoPlay(); if (currentIndex > 0) window.jumpTo(currentIndex - 1); };
-window.nextMove = () => { if (currentIndex < history.length - 1) window.jumpTo(currentIndex + 1); else stopAutoPlay(); };
+function syncDisplayNames() {
+    const s = document.getElementById('sente-input').value || "先手";
+    const g = document.getElementById('gote-input').value || "後手";
+    document.getElementById('name-display-sente').textContent = s + (result==='sente_win'?'○':'');
+    document.getElementById('name-display-gote').textContent = g + (result==='gote_win'?'○':'');
+}
+
+function updateStatus() {
+    const msg = document.getElementById('msg');
+    msg.textContent = result ? "対局終了" : (currentIndex < history.length-1 ? "棋譜閲覧中" : (turn==='sente'?'先手番':'後手番'));
+}
+
+function updateKifuList() {
+    const log = document.getElementById('kifu-list');
+    log.innerHTML = '';
+    history.forEach((h, i) => {
+        const d = document.createElement('div');
+        d.className = `kifu-line ${i === currentIndex ? 'active' : ''}`;
+        d.textContent = h.moveStr;
+        d.onclick = () => window.jumpTo(i);
+        log.appendChild(d);
+    });
+}
+
+// --- 5. HTML公開用グローバル関数 ---
+window.jumpTo = (i) => { currentIndex = i; selected = null; render(); };
+window.prevMove = () => { if (currentIndex > 0) window.jumpTo(currentIndex - 1); };
+window.nextMove = () => { if (currentIndex < history.length - 1) window.jumpTo(currentIndex + 1); };
 window.undoMove = () => {
-    stopAutoPlay(); if (history.length <= 1) return;
+    if (history.length <= 1) return;
     history.pop();
-    board = JSON.parse(JSON.stringify(history[history.length-1].board));
-    hands = JSON.parse(JSON.stringify(history[history.length-1].hands));
-    turn = history[history.length-1].turn; result = null;
-    currentIndex = history.length - 1; selected = null;
+    const last = history[history.length-1];
+    board = JSON.parse(JSON.stringify(last.board));
+    hands = JSON.parse(JSON.stringify(last.hands));
+    turn = last.turn; currentIndex = history.length - 1; result = null;
     render();
 };
 window.toggleRotate = () => {
@@ -168,7 +196,7 @@ window.resignGame = () => {
     if (result || !confirm("投了しますか？")) return;
     result = (turn==='sente'?'gote_win':'sente_win');
     saveHistory(null,null,null,null,"投了");
-    render();
+    render(); syncDisplayNames();
 };
 window.openSettings = (m) => {
     document.getElementById('modal-overlay').style.display='flex';
@@ -177,12 +205,7 @@ window.openSettings = (m) => {
 };
 window.closeSettings = () => { document.getElementById('modal-overlay').style.display='none'; syncDisplayNames(); };
 window.executeDownload = () => {
-    const info = {
-        sente: document.getElementById('sente-input').value || "先手",
-        gote: document.getElementById('gote-input').value || "後手",
-        event: document.getElementById('event').value || "対局",
-        date: document.getElementById('date-text').value
-    };
+    const info = { sente: document.getElementById('sente-input').value || "先手", gote: document.getElementById('gote-input').value || "後手", event: document.getElementById('event').value || "対局", date: document.getElementById('date-text').value };
     const kif = generateKifString(history, result, info);
     const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), kif], { type: 'text/plain;charset=utf-8' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
@@ -190,77 +213,12 @@ window.executeDownload = () => {
     a.click();
     window.closeSettings();
 };
-
-// --- ヘルパー関数群 ---
-function syncDisplayNames() { /* 名前更新 */ }
-function updateHandUI(owner, handData) { /* 駒台更新 */ }
-function updateStatus() { /* 状態表示更新 */ }
-function updateKifuList() { /* 棋譜リスト更新 */ }
-
-// --- 駒台（持ち駒）を表示する関数 ---
-function updateHandUI(owner, handData) {
-    const container = document.querySelector(`#hand-${owner} .hand-container`);
-    if (!container) return;
-    
-    container.innerHTML = ''; // 一旦空にする
-    
-    // 持ち駒のデータをループで回して表示
-    for (const [p, count] of Object.entries(handData)) {
-        if (count > 0) {
-            const el = document.createElement('div');
-            el.className = 'hand-piece';
-            // 2枚以上の場合は数字を表示（例：歩2）
-            el.textContent = `${p}${count > 1 ? count : ''}`;
-            
-            // 自分の手番ならクリックで選択可能にする
-            el.onclick = (e) => {
-                e.stopPropagation(); // 重なり防止
-                if (turn === owner && !result && currentIndex === history.length - 1) {
-                    stopAutoPlay();
-                    selected = { p, type: 'hand' };
-                    render(); // 再描画して「選択中」の色を出す
-                }
-            };
-            container.appendChild(el);
-        }
+window.toggleAutoPlay = () => {
+    if (autoPlayTimer) { clearInterval(autoPlayTimer); autoPlayTimer = null; document.getElementById('autoplay-btn').textContent = "自動再生 開始"; }
+    else {
+        autoPlayTimer = setInterval(() => { if (currentIndex < history.length - 1) window.nextMove(); else window.toggleAutoPlay(); }, 1000);
+        document.getElementById('autoplay-btn').textContent = "停止";
     }
-}
-
-// --- 手番や状態のテキストを更新する関数 ---
-function updateStatus() {
-    const msgEl = document.getElementById('msg');
-    if (!msgEl) return;
-    
-    if (result) {
-        msgEl.textContent = result === 'sente_win' ? "先手勝ち（投了）" : "後手勝ち（投了）";
-        msgEl.style.color = "#ff4444";
-    } else {
-        msgEl.textContent = (turn === 'sente' ? "先手" : "後手") + "番";
-        msgEl.style.color = "var(--text-main)";
-    }
-}
-
-// --- 棋譜リストの更新 ---
-function updateKifuList() {
-    const listEl = document.getElementById('kifu-list');
-    if (!listEl) return;
-    listEl.innerHTML = '';
-    history.forEach((h, i) => {
-        const item = document.createElement('div');
-        item.className = `kifu-item ${i === currentIndex ? 'active' : ''}`;
-        item.textContent = `${i}: ${h.moveStr}`;
-        item.onclick = () => window.jumpTo(i);
-        listEl.appendChild(item);
-    });
-}
-
-// --- プレイヤー名の同期 ---
-function syncDisplayNames() {
-    const s = document.getElementById('sente-input').value || "先手";
-    const g = document.getElementById('gote-input').value || "後手";
-    document.getElementById('name-display-sente').textContent = s;
-    document.getElementById('name-display-gote').textContent = g;
-}
-
+};
 
 init();
