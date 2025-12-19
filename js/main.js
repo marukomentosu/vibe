@@ -197,4 +197,70 @@ function updateHandUI(owner, handData) { /* 駒台更新 */ }
 function updateStatus() { /* 状態表示更新 */ }
 function updateKifuList() { /* 棋譜リスト更新 */ }
 
+// --- 駒台（持ち駒）を表示する関数 ---
+function updateHandUI(owner, handData) {
+    const container = document.querySelector(`#hand-${owner} .hand-container`);
+    if (!container) return;
+    
+    container.innerHTML = ''; // 一旦空にする
+    
+    // 持ち駒のデータをループで回して表示
+    for (const [p, count] of Object.entries(handData)) {
+        if (count > 0) {
+            const el = document.createElement('div');
+            el.className = 'hand-piece';
+            // 2枚以上の場合は数字を表示（例：歩2）
+            el.textContent = `${p}${count > 1 ? count : ''}`;
+            
+            // 自分の手番ならクリックで選択可能にする
+            el.onclick = (e) => {
+                e.stopPropagation(); // 重なり防止
+                if (turn === owner && !result && currentIndex === history.length - 1) {
+                    stopAutoPlay();
+                    selected = { p, type: 'hand' };
+                    render(); // 再描画して「選択中」の色を出す
+                }
+            };
+            container.appendChild(el);
+        }
+    }
+}
+
+// --- 手番や状態のテキストを更新する関数 ---
+function updateStatus() {
+    const msgEl = document.getElementById('msg');
+    if (!msgEl) return;
+    
+    if (result) {
+        msgEl.textContent = result === 'sente_win' ? "先手勝ち（投了）" : "後手勝ち（投了）";
+        msgEl.style.color = "#ff4444";
+    } else {
+        msgEl.textContent = (turn === 'sente' ? "先手" : "後手") + "番";
+        msgEl.style.color = "var(--text-main)";
+    }
+}
+
+// --- 棋譜リストの更新 ---
+function updateKifuList() {
+    const listEl = document.getElementById('kifu-list');
+    if (!listEl) return;
+    listEl.innerHTML = '';
+    history.forEach((h, i) => {
+        const item = document.createElement('div');
+        item.className = `kifu-item ${i === currentIndex ? 'active' : ''}`;
+        item.textContent = `${i}: ${h.moveStr}`;
+        item.onclick = () => window.jumpTo(i);
+        listEl.appendChild(item);
+    });
+}
+
+// --- プレイヤー名の同期 ---
+function syncDisplayNames() {
+    const s = document.getElementById('sente-input').value || "先手";
+    const g = document.getElementById('gote-input').value || "後手";
+    document.getElementById('name-display-sente').textContent = s;
+    document.getElementById('name-display-gote').textContent = g;
+}
+
+
 init();
