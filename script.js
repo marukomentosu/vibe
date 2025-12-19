@@ -1,18 +1,10 @@
-// 1. 短い振動
 function playShort() {
-    // 50ミリ秒だけ震える（チッという感じ）
-    navigator.vibrate(50);
-}
-
-// 2. 長い振動
-function playLong() {
-    // 500ミリ秒（0.5秒）震える（ブーという感じ）
-    navigator.vibrate(500);
-}
-
-// 3. リズム振動
-function playRhythm() {
-    // [振動, 休憩, 振動, 休憩...] の順番で指定
-    // 200ms揺れる → 100ms休む → 200ms揺れる → 100ms休む → 500ms揺れる
-    navigator.vibrate([200, 100, 200, 100, 500]);
+    console.log("ボタンが押されました"); // 確認用メッセージ
+    
+    if (navigator.vibrate) {
+        alert("バイブ機能は存在します。これから振るわせます！");
+        navigator.vibrate(50);
+    } else {
+        alert("このブラウザ・端末はバイブに対応していません！");
+    }
 }
