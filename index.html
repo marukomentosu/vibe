@@ -2,22 +2,75 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>バイブテスト</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>HTML将棋 Ultra - Clean & Multi-Device</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <button id="testBtn" style="padding: 50px;">ここを押して！</button>
 
-    <script>
-        // HTMLの中に直接書くテスト
-        document.getElementById('testBtn').onclick = function() {
-            alert("ボタンが押されました！");
-            if (navigator.vibrate) {
-                navigator.vibrate(200);
-            } else {
-                alert("バイブ非対応ブラウザです");
-            }
-        };
-    </script>
+<div id="kifu-overlay" onclick="toggleKifu(false)">
+    <h3 style="color:var(--text-accent); margin:0 0 10px 0;">棋譜履歴</h3>
+    <div id="kifu-list" onclick="event.stopPropagation()"></div>
+    <button onclick="toggleKifu(false)" style="margin-top:10px; width:100%;">閉じる</button>
+</div>
+
+<div id="modal-overlay">
+    <div class="modal-content" onclick="event.stopPropagation()">
+        <h3 id="modal-title" style="margin:0; color:var(--text-accent);">設定</h3>
+        <div id="settings-fields">
+            <div><label style="font-size:11px;">棋戦名</label><input type="text" id="event" placeholder="棋戦名"></div>
+            <div><label style="font-size:11px;">対局日</label><input type="text" id="date-text"></div>
+            <div style="display:flex; gap:5px;"><input type="text" id="sente-input" placeholder="先手" style="flex:1"><input type="text" id="gote-input" placeholder="後手" style="flex:1"></div>
+        </div>
+        <div id="filename-area" style="display:none;"><label style="font-size:11px;">ファイル名</label><input type="text" id="filename-input"></div>
+        <div style="display:flex; gap:8px;">
+            <button onclick="closeSettings()" style="flex:1">キャンセル</button>
+            <button id="save-final-btn" style="flex:1; background:#114422; color:#66ff99; display:none;" onclick="executeDownload()">保存</button>
+        </div>
+    </div>
+</div>
+
+<div class="game-container" id="main-container">
+    <div class="komadai" id="hand-gote">
+        <div class="player-name" id="name-display-gote">後手</div>
+        <div class="hand-container"></div>
+    </div>
+    <div class="board-wrapper">
+        <div class="status-msg" id="msg">先手番</div>
+        <div id="board" class="board"></div>
+    </div>
+    <div class="komadai" id="hand-sente">
+        <div class="player-name" id="name-display-sente">先手</div>
+        <div class="hand-container"></div>
+    </div>
+</div>
+
+<div class="controls-panel">
+    <div class="btn-group">
+        <button class="btn-nav" onclick="jumpTo(0)">|◀</button>
+        <button class="btn-nav" onclick="prevMove()" style="grid-column: span 1">◀ 前へ</button>
+        <button class="btn-nav" onclick="nextMove()" style="grid-column: span 1">次へ ▶</button>
+        <button class="btn-nav" onclick="jumpTo(history.length - 1)">▶|</button>
+    </div>
+    <div class="btn-group">
+        <button class="btn-action" onclick="undoMove()">一手戻す</button>
+        <button onclick="toggleRotate()">盤反転</button>
+        <button onclick="toggleKifu(true)">棋譜</button>
+        <button style="color:#99ccff" onclick="resetGame()">最初から</button>
+    </div>
+    <div class="btn-group">
+        <div class="speed-box"><label>速さ</label><input type="number" id="play-speed" value="1.0" step="0.1" min="0.1"></div>
+        <button id="autoplay-btn" class="btn-autoplay" style="grid-column: span 2;" onclick="toggleAutoPlay()">自動再生 開始</button>
+        <button class="btn-system" onclick="openSettings('info')">設定</button>
+    </div>
+    <div class="btn-group">
+        <input type="file" id="kifu-import-input" style="display:none" accept=".kif" onchange="importKifu(event)">
+        <button class="btn-system" onclick="document.getElementById('kifu-import-input').click()">棋譜取込</button>
+        <button class="btn-save" style="grid-column: span 2;" onclick="openSettings('save')">プロ形式で保存 (.kif)</button>
+        <button class="btn-danger" onclick="resignGame()">投了</button>
+    </div>
+</div>
+
+<script src="script.js"></script>
 </body>
 </html>
