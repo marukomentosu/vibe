@@ -1,41 +1,309 @@
-/* 画面全体の中央寄せ */
+:root {
+    --bg-deep: #121212;
+    --bg-panel: #1e1e1e;
+    --board-dark: #3a2a1d;
+    --cell-border: #554433;
+    --text-main: #e0e0e0;
+    --text-accent: #ffcc00;
+    --selected-bg: rgba(255, 204, 0, 0.4);
+    --btn-bg: #333333;
+    --btn-border: #444444;
+    --cell-size: min(10.5vw, 5.8vh, 50px);
+    --accent-green: #114422;
+    --accent-red: #552222;
+    --accent-blue: #004466;
+}
+
+* {
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+}
+
 body {
+    font-family: 'Hiragino Mincho ProN', serif;
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    margin: 0;
+    background: var(--bg-deep);
+    color: var(--text-main);
+    overflow: hidden;
+    padding: 4px;
+}
+
+/* Layout */
+.game-container {
+    flex: 1;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    height: 100vh;
-    margin: 0;
-    background-color: #f5f5f5;
-    font-family: sans-serif;
+    gap: 4px;
+    min-height: 0;
 }
 
-/* ボタンを並べる箱 */
-.container {
+.game-container.rotated {
+    flex-direction: column-reverse;
+}
+
+.komadai {
+    width: 98%;
+    max-width: 500px;
+    height: 45px;
+    background: var(--bg-panel);
+    border: 1px solid var(--btn-border);
+    display: flex;
+    align-items: center;
+    padding: 0 10px;
+    border-radius: 8px;
+}
+
+.player-name {
+    font-size: 12px;
+    font-weight: bold;
+    margin-right: 8px;
+    color: var(--text-accent);
+    white-space: nowrap;
+}
+
+.hand-container {
+    display: flex;
+    gap: 4px;
+    flex: 1;
+    overflow-x: auto;
+    align-items: center;
+}
+
+.hand-piece {
+    font-size: 20px;
+    cursor: pointer;
+    color: #fdf5e6;
+    transition: transform 0.2s;
+    display: inline-block;
+}
+
+.p-flip {
+    transform: rotate(180deg);
+}
+
+.hand-piece.selected {
+    background: var(--selected-bg);
+    box-shadow: 0 0 10px var(--text-accent);
+    transform: scale(1.2);
+}
+
+.board-wrapper {
     display: flex;
     flex-direction: column;
-    gap: 20px; /* ボタン同士の隙間 */
+    align-items: center;
 }
 
-/* ボタンの基本デザイン */
-.vibe-btn {
-    padding: 15px 30px;
-    font-size: 18px;
+.status-msg {
+    height: 18px;
+    color: var(--text-accent);
     font-weight: bold;
-    color: white;
-    border: none;
-    border-radius: 50px;
-    cursor: pointer;
-    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    font-size: 13px;
+    margin-bottom: 2px;
 }
 
-/* ボタンごとの色分け */
-.short { background-color: #4CAF50; } /* 緑 */
-.long { background-color: #2196F3; }  /* 青 */
-.rhythm { background-color: #FF5722; } /* オレンジ */
+.board {
+    display: grid;
+    grid-template-columns: repeat(9, var(--cell-size));
+    background: var(--board-dark);
+    border: 2px solid #000;
+}
 
-/* 押した時の反応 */
-.vibe-btn:active {
-    transform: scale(0.95);
-    box-shadow: none;
+.board.rotated {
+    transform: rotate(180deg);
+}
+
+.cell {
+    width: var(--cell-size);
+    height: var(--cell-size);
+    border: 0.5px solid var(--cell-border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: calc(var(--cell-size) * 0.7);
+    cursor: pointer;
+    color: #fdf5e6;
+    position: relative;
+}
+
+.cell.selected {
+    background: var(--selected-bg);
+}
+
+.cell.last-move {
+    background: rgba(255, 100, 0, 0.2);
+}
+
+.legal-dot {
+    width: 10px;
+    height: 10px;
+    background: rgba(0, 255, 150, 0.4);
+    border-radius: 50%;
+    position: absolute;
+    pointer-events: none;
+}
+
+/* Control Panel */
+.controls-panel {
+    width: 100%;
+    max-width: 500px;
+    background: var(--bg-panel);
+    padding: 8px;
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 4px;
+}
+
+.btn-group {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 4px;
+}
+
+button {
+    padding: 8px 2px;
+    cursor: pointer;
+    background: var(--btn-bg);
+    border: 1px solid var(--btn-border);
+    border-radius: 6px;
+    color: var(--text-main);
+    font-weight: bold;
+    font-size: 11px;
+    transition: opacity 0.2s;
+}
+
+button:active {
+    opacity: 0.7;
+}
+
+/* Specific Styles */
+.btn-nav {
+    background: #444;
+}
+
+.btn-action {
+    color: var(--text-accent);
+}
+
+.btn-system {
+    background: #222;
+}
+
+.btn-danger {
+    color: #ff6666;
+    background: var(--accent-red);
+}
+
+.btn-save {
+    color: #66ff99;
+    background: var(--accent-green);
+}
+
+.btn-autoplay {
+    background: var(--accent-blue);
+}
+
+.speed-box {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #000;
+    border-radius: 6px;
+    padding: 0 4px;
+    border: 1px solid var(--btn-border);
+}
+
+.speed-box label {
+    font-size: 9px;
+    color: #888;
+    margin-right: 4px;
+}
+
+.speed-box input {
+    width: 35px;
+    background: transparent;
+    border: none;
+    color: #fff;
+    text-align: center;
+    font-size: 11px;
+    outline: none;
+}
+
+/* Overlays */
+#kifu-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.92);
+    z-index: 200;
+    flex-direction: column;
+    padding: 15px;
+}
+
+#kifu-list {
+    flex: 1;
+    overflow-y: auto;
+    background: #000;
+    border-radius: 8px;
+    padding: 8px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+}
+
+.kifu-line {
+    cursor: pointer;
+    padding: 6px 10px;
+    background: #222;
+    border-radius: 4px;
+    color: #aaa;
+    font-size: 13px;
+}
+
+.kifu-line.active {
+    background: var(--text-accent);
+    color: #000;
+}
+
+#modal-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.8);
+    z-index: 300;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal-content {
+    background: var(--bg-panel);
+    padding: 15px;
+    border-radius: 12px;
+    width: 90%;
+    max-width: 380px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.modal-content input {
+    background: #000;
+    border: 1px solid var(--btn-border);
+    padding: 12px;
+    color: var(--text-main);
+    border-radius: 6px;
+    width: 100%;
 }
