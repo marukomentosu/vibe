@@ -1,5 +1,5 @@
 import { P_MOVE } from './constants.js';
-import { canMove, checkIllegalDrop } from './gameLogic.js';
+import { canMove, checkIllegalDrop, isCheck, isLegalMove, isCheckmate } from './gameLogic.js';
 import { generateKifString } from './kifuManager.js';
 
 let board, hands, turn, selected, history, currentIndex, result, isRotated = false, autoPlayTimer = null;
@@ -18,7 +18,8 @@ function init() {
 
     turn = 'sente'; selected = null; history = []; result = null;
     const n = new Date();
-    document.getElementById('date-text').value = `${n.getFullYear()}/${(n.getMonth()+1).toString().padStart(2,'0')}/${n.getDate().toString().padStart(2,'0')}`;
+    const dateEl = document.getElementById('date-text');
+    if(dateEl) dateEl.value = `${n.getFullYear()}/${(n.getMonth()+1).toString().padStart(2,'0')}/${n.getDate().toString().padStart(2,'0')}`;
     
     saveHistory(null, null, null, null, "開始");
     render();
@@ -29,6 +30,7 @@ function init() {
 function render() {
     const state = history[currentIndex];
     const boardEl = document.getElementById('board');
+    if(!boardEl) return;
     boardEl.innerHTML = '';
     
     const lastP = (currentIndex > 0) ? state.lastPos : null;
@@ -62,6 +64,7 @@ function render() {
 
 function updateHandUI(owner, handData) {
     const container = document.querySelector(`#hand-${owner} .hand-container`);
+    if(!container) return;
     container.innerHTML = '';
     for (const [p, count] of Object.entries(handData)) {
         if (count > 0) {
@@ -80,22 +83,39 @@ function updateHandUI(owner, handData) {
     }
 }
 
-// --- 3. 指し手実行ロジック ---
+// --- 3. 操作ロジック（王手放置チェック込み） ---
 function handleCellClick(r, c) {
     const clicked = board[r][c];
+    
     if (selected?.type === 'hand') {
+        // 持ち駒を打つ
         if (!clicked && !checkIllegalDrop(board, selected.p, r, c, turn)) {
-            executeMove(null, null, r, c, selected.p, true);
+            if (isLegalMove(board, null, null, r, c, turn, true, selected.p)) {
+                executeMove(null, null, r, c, selected.p, true);
+                selected = null;
+            } else {
+                alert("王手放置、または自玉を晒す手は指せません");
+            }
+        } else if (clicked && clicked.owner === turn) {
+            selected = { r, c, p: clicked.p, type: 'board' };
+        } else {
             selected = null;
         }
     } else if (selected) {
+        // 盤上の駒を動かす
         if (selected.r === r && selected.c === c) {
             selected = null;
         } else if (canMove(board, selected.r, selected.c, r, c, turn)) {
-            executeMove(selected.r, selected.c, r, c, selected.p);
-            selected = null;
+            if (isLegalMove(board, selected.r, selected.c, r, c, turn)) {
+                executeMove(selected.r, selected.c, r, c, selected.p);
+                selected = null;
+            } else {
+                alert("王手放置、または自玉を晒す手は指せません");
+            }
         } else if (clicked && clicked.owner === turn) {
             selected = { r, c, p: clicked.p, type: 'board' };
+        } else {
+            selected = null;
         }
     } else if (clicked && clicked.owner === turn) {
         selected = { r, c, p: clicked.p, type: 'board' };
@@ -128,13 +148,30 @@ function executeMove(fr, fc, tr, tc, piece, isDrop = false) {
     if (!isDrop) moveStr += `(${9-fc}${fr+1})`;
     
     saveHistory(tr, tc, fr, fc, moveStr);
+    
+    // 手番交代
     turn = (turn === 'sente' ? 'gote' : 'sente');
+
+    // 詰み判定
+    if (isCheckmate(board, hands, turn)) {
+        result = (turn === 'sente' ? 'gote_win' : 'sente_win');
+        const winnerLabel = (result === 'sente_win' ? "先手" : "後手");
+        alert(`詰みです。${winnerLabel}の勝ちです！`);
+        saveHistory(null, null, null, null, "詰み");
+    }
+    
     render();
 }
 
 // --- 4. 共通・補助関数 ---
 function saveHistory(tr, tc, fr, fc, moveStr) {
-    history.push({ board: JSON.parse(JSON.stringify(board)), hands: JSON.parse(JSON.stringify(hands)), lastPos: {r: tr, c: tc}, moveStr, turn });
+    history.push({ 
+        board: JSON.parse(JSON.stringify(board)), 
+        hands: JSON.parse(JSON.stringify(hands)), 
+        lastPos: {r: tr, c: tc}, 
+        moveStr, 
+        turn 
+    });
     currentIndex = history.length - 1;
 }
 
@@ -142,8 +179,15 @@ function getLegalMoves() {
     if (!selected || result || currentIndex !== history.length-1) return [];
     let moves = [];
     for (let r=0; r<9; r++) for (let c=0; c<9; c++) {
-        if (selected.type === 'hand') { if (!board[r][c] && !checkIllegalDrop(board, selected.p, r, c, turn, true)) moves.push({r, c}); }
-        else { if (canMove(board, selected.r, selected.c, r, c, turn)) moves.push({r, c}); }
+        if (selected.type === 'hand') {
+            if (!board[r][c] && !checkIllegalDrop(board, selected.p, r, c, turn, true)) {
+                if (isLegalMove(board, null, null, r, c, turn, true, selected.p)) moves.push({r, c});
+            }
+        } else {
+            if (canMove(board, selected.r, selected.c, r, c, turn)) {
+                if (isLegalMove(board, selected.r, selected.c, r, c, turn)) moves.push({r, c});
+            }
+        }
     }
     return moves;
 }
@@ -151,22 +195,32 @@ function getLegalMoves() {
 function syncDisplayNames() {
     const s = document.getElementById('sente-input').value || "先手";
     const g = document.getElementById('gote-input').value || "後手";
-    document.getElementById('name-display-sente').textContent = s + (result==='sente_win'?'○':'');
-    document.getElementById('name-display-gote').textContent = g + (result==='gote_win'?'○':'');
+    const ds = document.getElementById('name-display-sente');
+    const dg = document.getElementById('name-display-gote');
+    if(ds) ds.textContent = s + (result==='sente_win'?' ○':'');
+    if(dg) dg.textContent = g + (result==='gote_win'?' ○':'');
 }
 
 function updateStatus() {
     const msg = document.getElementById('msg');
-    msg.textContent = result ? "対局終了" : (currentIndex < history.length-1 ? "棋譜閲覧中" : (turn==='sente'?'先手番':'後手番'));
+    if(!msg) return;
+    if (result) {
+        msg.textContent = result === 'sente_win' ? "先手勝ち" : "後手勝ち";
+    } else {
+        msg.textContent = (currentIndex < history.length - 1) ? "棋譜閲覧中" : (turn === 'sente' ? "先手番" : "後手番");
+    }
 }
 
 function updateKifuList() {
     const log = document.getElementById('kifu-list');
+    if(!log) return;
     log.innerHTML = '';
     history.forEach((h, i) => {
         const d = document.createElement('div');
         d.className = `kifu-line ${i === currentIndex ? 'active' : ''}`;
-        d.textContent = h.moveStr;
+        d.style.padding = "2px 5px";
+        d.style.cursor = "pointer";
+        d.textContent = `${i}: ${h.moveStr}`;
         d.onclick = () => window.jumpTo(i);
         log.appendChild(d);
     });
@@ -194,8 +248,8 @@ window.toggleKifu = (show) => { document.getElementById('kifu-overlay').style.di
 window.resetGame = () => { if (confirm("リセットしますか？")) init(); };
 window.resignGame = () => {
     if (result || !confirm("投了しますか？")) return;
-    result = (turn==='sente'?'gote_win':'sente_win');
-    saveHistory(null,null,null,null,"投了");
+    result = (turn === 'sente' ? 'gote_win' : 'sente_win');
+    saveHistory(null, null, null, null, "投了");
     render(); syncDisplayNames();
 };
 window.openSettings = (m) => {
@@ -214,9 +268,14 @@ window.executeDownload = () => {
     window.closeSettings();
 };
 window.toggleAutoPlay = () => {
-    if (autoPlayTimer) { clearInterval(autoPlayTimer); autoPlayTimer = null; document.getElementById('autoplay-btn').textContent = "自動再生 開始"; }
-    else {
-        autoPlayTimer = setInterval(() => { if (currentIndex < history.length - 1) window.nextMove(); else window.toggleAutoPlay(); }, 1000);
+    if (autoPlayTimer) { 
+        clearInterval(autoPlayTimer); autoPlayTimer = null; 
+        document.getElementById('autoplay-btn').textContent = "自動再生 開始"; 
+    } else {
+        autoPlayTimer = setInterval(() => { 
+            if (currentIndex < history.length - 1) window.nextMove(); 
+            else window.toggleAutoPlay(); 
+        }, 1000);
         document.getElementById('autoplay-btn').textContent = "停止";
     }
 };
