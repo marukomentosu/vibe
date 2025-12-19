@@ -28,17 +28,32 @@ function init() {
     syncDisplayNames();
 }
 
+// main.js の render 関数をこのように確認/修正してください
 function render() {
     const state = history[currentIndex];
     const legalMoves = getLegalMoves();
 
-    // 描画には「現在の盤面」「現在の持ち駒」「現在の手番」を使う
     UI.renderBoard(board, selected, state.lastPos, legalMoves, handleCellClick);
     UI.updateHandUI('sente', hands.sente, selected, handleHandClick);
     UI.updateHandUI('gote', hands.gote, selected, handleHandClick);
     UI.updateStatusMessage(result, turn, currentIndex < history.length - 1);
-    UI.renderKifuList(history, currentIndex, window.jumpTo);
+    
+    // 重要：ここで棋譜リストを描画する
+    UI.renderKifuList(history, currentIndex, (index) => {
+        window.jumpTo(index); // クリックしたらその局面にジャンプ
+        // 必要ならここで toggleKifu(false) を呼んで閉じても良い
+    });
 }
+
+// グローバル関数（HTMLから呼ばれる）
+window.toggleKifu = (show) => {
+    const overlay = document.getElementById('kifu-overlay');
+    if (overlay) {
+        overlay.style.display = show ? 'flex' : 'none';
+        if (show) render(); // 開く瞬間に最新の状態にする
+    }
+};
+
 
 // --- ハンドラー ---
 function handleHandClick(p, owner) {
