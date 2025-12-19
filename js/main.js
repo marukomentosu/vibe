@@ -1,10 +1,11 @@
 import { P_MOVE } from './constants.js';
-import { canMove, checkIllegalDrop, isCheck, isLegalMove, isCheckmate } from './gameLogic.js';
+import { canMove, checkIllegalDrop, isLegalMove, isCheckmate } from './gameLogic.js';
 import { generateKifString } from './kifuManager.js';
+import * as UI from './ui.js'; // UIファイルをインポート
 
-let board, hands, turn, selected, history, currentIndex, result, isRotated = false, autoPlayTimer = null;
+// --- ゲーム状態（State） ---
+let board, hands, turn, selected, history, currentIndex, result, autoPlayTimer = null;
 
-// --- 1. 初期化 ---
 function init() {
     board = Array(9).fill().map(() => Array(9).fill(null));
     hands = { sente: { '歩':0,'香':0,'桂':0,'銀':0,'金':0,'角':0,'飛':0 }, gote: { '歩':0,'香':0,'桂':0,'銀':0,'金':0,'角':0,'飛':0 } };
@@ -17,127 +18,58 @@ function init() {
     setup.forEach((p, c) => board[8][c] = {p: p==='玉'?'玉':p, owner:'sente'});
 
     turn = 'sente'; selected = null; history = []; result = null;
-    const n = new Date();
-    const dateEl = document.getElementById('date-text');
-    if(dateEl) dateEl.value = `${n.getFullYear()}/${(n.getMonth()+1).toString().padStart(2,'0')}/${n.getDate().toString().padStart(2,'0')}`;
-    
     saveHistory(null, null, null, null, "開始");
     render();
     syncDisplayNames();
 }
 
-// --- 2. 描画・UI更新 ---
+// 司令塔：データを受け取ってUIに描画を依頼する
 function render() {
     const state = history[currentIndex];
-    const boardEl = document.getElementById('board');
-    if(!boardEl) return;
-    boardEl.innerHTML = '';
-    
-    const lastP = (currentIndex > 0) ? state.lastPos : null;
     const legalMoves = getLegalMoves();
 
-    for (let r=0; r<9; r++) {
-        for (let c=0; c<9; c++) {
-            const cell = document.createElement('div');
-            cell.className = `cell ${selected?.type==='board'&&selected.r===r&&selected.c===c?'selected':''} ${lastP?.r===r&&lastP.c===c?'last-move':''}`;
-            const d = state.board[r][c];
-            if (d) {
-                const s = document.createElement('span');
-                s.textContent = d.p;
-                if (d.owner === 'gote') s.className = 'p-flip';
-                cell.appendChild(s);
-            }
-            // 合法手のドット表示
-            if (legalMoves.some(m => m.r === r && m.c === c)) {
-                const dot = document.createElement('div');
-                dot.className = 'legal-dot';
-                cell.appendChild(dot);
-            }
-            cell.onclick = () => handleCellClick(r, c);
-            boardEl.appendChild(cell);
-        }
-    }
-    updateHandUI('sente', state.hands.sente);
-    updateHandUI('gote', state.hands.gote);
-    updateStatus();
-    updateKifuList();
+    UI.renderBoard(state.board, selected, state.lastPos, legalMoves, handleCellClick);
+    UI.updateHandUI('sente', state.hands.sente, selected, handleHandClick);
+    UI.updateHandUI('gote', state.hands.gote, selected, handleHandClick);
+    UI.updateStatusMessage(result, turn, currentIndex < history.length - 1);
+    UI.renderKifuList(history, currentIndex, window.jumpTo);
 }
 
-function updateHandUI(owner, handData) {
-    const container = document.querySelector(`#hand-${owner} .hand-container`);
-    if(!container) return;
-    container.innerHTML = '';
-    for (const [p, count] of Object.entries(handData)) {
-        if (count > 0) {
-            const el = document.createElement('div');
-            el.className = `hand-piece ${owner==='gote'?'p-flip':''} ${selected?.type==='hand'&&selected.p===p?'selected':''}`;
-            el.innerHTML = `${p}${count>1?count:''}`;
-            el.onclick = (e) => {
-                e.stopPropagation();
-                if (turn === owner && !result && currentIndex === history.length-1) {
-                    // 持ち駒を選択（すでに選択されていれば解除）
-                    selected = (selected?.type === 'hand' && selected.p === p) ? null : { type: 'hand', p, owner };
-                    render();
-                }
-            };
-            container.appendChild(el);
-        }
-    }
+// --- ハンドラー（操作） ---
+function handleHandClick(p, owner) {
+    if (result || currentIndex !== history.length - 1 || turn !== owner) return;
+    selected = (selected?.type === 'hand' && selected.p === p) ? null : { type: 'hand', p, owner };
+    render();
 }
 
-// --- 3. 操作ロジック（ここが2回タッチの原因を修正した部分） ---
 function handleCellClick(r, c) {
-    // 閲覧モードや終局後は操作不能
     if (result || currentIndex !== history.length - 1) return;
-
     const clicked = board[r][c];
 
-    // 何かが選択されている場合
     if (selected) {
         if (selected.type === 'hand') {
-            // 【持ち駒を打つ】
-            if (!clicked) {
-                if (!checkIllegalDrop(board, selected.p, r, c, turn)) {
-                    if (isLegalMove(board, null, null, r, c, turn, true, selected.p)) {
-                        executeMove(null, null, r, c, selected.p, true);
-                        selected = null;
-                    } else {
-                        alert("王手放置（自玉を晒す手）です");
-                    }
-                }
-            } else if (clicked.owner === turn) {
-                // 自分の別の駒をタップしたら選択を切り替え
+            if (!clicked && !checkIllegalDrop(board, selected.p, r, c, turn)) {
+                if (isLegalMove(board, null, null, r, c, turn, true, selected.p)) {
+                    executeMove(null, null, r, c, selected.p, true);
+                    selected = null;
+                } else { alert("王手放置です"); }
+            } else if (clicked?.owner === turn) {
                 selected = { r, c, p: clicked.p, type: 'board' };
-            } else {
-                // 打てない場所や相手の駒の上なら選択解除
-                selected = null;
-            }
+            } else { selected = null; }
         } else {
-            // 【盤上の駒を動かす】
             if (selected.r === r && selected.c === c) {
-                // 同じ場所をタップしたら選択解除
                 selected = null;
             } else if (canMove(board, selected.r, selected.c, r, c, turn)) {
-                // 移動可能な場合
                 if (isLegalMove(board, selected.r, selected.c, r, c, turn)) {
                     executeMove(selected.r, selected.c, r, c, selected.p);
                     selected = null;
-                } else {
-                    alert("王手放置（自玉を晒す手）です");
-                }
-            } else if (clicked && clicked.owner === turn) {
-                // 自分の別の駒をタップしたら選択を切り替え
+                } else { alert("王手放置です"); }
+            } else if (clicked?.owner === turn) {
                 selected = { r, c, p: clicked.p, type: 'board' };
-            } else {
-                // 移動できない場所（相手の駒や空きマス）をタップしたら選択解除
-                selected = null;
-            }
+            } else { selected = null; }
         }
-    } else {
-        // 何も選択されていない場合、自分の駒なら選択
-        if (clicked && clicked.owner === turn) {
-            selected = { r, c, p: clicked.p, type: 'board' };
-        }
+    } else if (clicked?.owner === turn) {
+        selected = { r, c, p: clicked.p, type: 'board' };
     }
     render();
 }
@@ -145,52 +77,36 @@ function handleCellClick(r, c) {
 function executeMove(fr, fc, tr, tc, piece, isDrop = false) {
     let finalPiece = piece, suffix = "";
     const last = history[currentIndex].lastPos;
-    const isSamePos = last && last.r === tr && last.c === tc;
-    const posStr = isSamePos ? "同　" : "９８７６５４３２１"[tc] + "一二三四五六七八九"[tr];
+    const posStr = (last && last.r === tr && last.c === tc) ? "同　" : "９８７６５４３２１"[tc] + "一二三四五六七八九"[tr];
 
     if (isDrop) {
-        hands[turn][piece]--;
-        suffix = "打";
+        hands[turn][piece]--; suffix = "打";
     } else {
         if (board[tr][tc]) {
             const cap = board[tr][tc].p;
             const rev = {'と':'歩','杏':'香','圭':'桂','全':'銀','馬':'角','龍':'飛'};
             hands[turn][rev[cap] || cap]++;
         }
-        // 成り判定（敵陣に入った、または敵陣から出た場合）
         if (P_MOVE[piece].up && ((turn === 'sente' && (fr <= 2 || tr <= 2)) || (turn === 'gote' && (fr >= 6 || tr >= 6)))) {
             if (confirm("成りますか？")) { finalPiece = P_MOVE[piece].up; suffix = "成"; } else suffix = "不成";
         }
         board[fr][fc] = null;
     }
     board[tr][tc] = { p: finalPiece, owner: turn };
-    let moveStr = `${posStr}${finalPiece}${suffix}`;
-    if (!isDrop) moveStr += `(${9-fc}${fr+1})`;
+    saveHistory(tr, tc, fr, fc, `${posStr}${finalPiece}${suffix}${isDrop?'':`(${9-fc}${fr+1})`}`);
     
-    saveHistory(tr, tc, fr, fc, moveStr);
-    
-    // 手番交代
     turn = (turn === 'sente' ? 'gote' : 'sente');
-
-    // 詰み判定
     if (isCheckmate(board, hands, turn)) {
         result = (turn === 'sente' ? 'gote_win' : 'sente_win');
         alert(`詰みです。${result === 'sente_win' ? '先手' : '後手'}の勝ちです！`);
         saveHistory(null, null, null, null, "詰み");
     }
-    
     render();
 }
 
-// --- 4. 共通・補助関数 ---
+// --- 補助関数 ---
 function saveHistory(tr, tc, fr, fc, moveStr) {
-    history.push({ 
-        board: JSON.parse(JSON.stringify(board)), 
-        hands: JSON.parse(JSON.stringify(hands)), 
-        lastPos: {r: tr, c: tc}, 
-        moveStr, 
-        turn 
-    });
+    history.push({ board: JSON.parse(JSON.stringify(board)), hands: JSON.parse(JSON.stringify(hands)), lastPos: {r: tr, c: tc}, moveStr, turn });
     currentIndex = history.length - 1;
 }
 
@@ -199,13 +115,9 @@ function getLegalMoves() {
     let moves = [];
     for (let r=0; r<9; r++) for (let c=0; c<9; c++) {
         if (selected.type === 'hand') {
-            if (!board[r][c] && !checkIllegalDrop(board, selected.p, r, c, turn, true)) {
-                if (isLegalMove(board, null, null, r, c, turn, true, selected.p)) moves.push({r, c});
-            }
-        } else {
-            if (canMove(board, selected.r, selected.c, r, c, turn)) {
-                if (isLegalMove(board, selected.r, selected.c, r, c, turn)) moves.push({r, c});
-            }
+            if (!board[r][c] && !checkIllegalDrop(board, selected.p, r, c, turn, true) && isLegalMove(board, null, null, r, c, turn, true, selected.p)) moves.push({r, c});
+        } else if (canMove(board, selected.r, selected.c, r, c, turn) && isLegalMove(board, selected.r, selected.c, r, c, turn)) {
+            moves.push({r, c});
         }
     }
     return moves;
@@ -214,36 +126,11 @@ function getLegalMoves() {
 function syncDisplayNames() {
     const s = document.getElementById('sente-input').value || "先手";
     const g = document.getElementById('gote-input').value || "後手";
-    const ds = document.getElementById('name-display-sente');
-    const dg = document.getElementById('name-display-gote');
-    if(ds) ds.textContent = s + (result==='sente_win'?' ○':'');
-    if(dg) dg.textContent = g + (result==='gote_win'?' ○':'');
+    document.getElementById('name-display-sente').textContent = s + (result==='sente_win'?' ○':'');
+    document.getElementById('name-display-gote').textContent = g + (result==='gote_win'?' ○':'');
 }
 
-function updateStatus() {
-    const msg = document.getElementById('msg');
-    if(!msg) return;
-    if (result) {
-        msg.textContent = result === 'sente_win' ? "先手勝ち" : "後手勝ち";
-    } else {
-        msg.textContent = (currentIndex < history.length - 1) ? "棋譜閲覧中" : (turn === 'sente' ? "先手番" : "後手番");
-    }
-}
-
-function updateKifuList() {
-    const log = document.getElementById('kifu-list');
-    if(!log) return;
-    log.innerHTML = '';
-    history.forEach((h, i) => {
-        const d = document.createElement('div');
-        d.className = `kifu-line ${i === currentIndex ? 'active' : ''}`;
-        d.textContent = `${i}: ${h.moveStr}`;
-        d.onclick = () => window.jumpTo(i);
-        log.appendChild(d);
-    });
-}
-
-// --- 5. HTML公開用グローバル関数 ---
+// --- Global Functions (HTMLから呼ぶもの) ---
 window.jumpTo = (i) => { currentIndex = i; selected = null; render(); };
 window.prevMove = () => { if (currentIndex > 0) window.jumpTo(currentIndex - 1); };
 window.nextMove = () => { if (currentIndex < history.length - 1) window.jumpTo(currentIndex + 1); };
@@ -257,7 +144,6 @@ window.undoMove = () => {
     render();
 };
 window.toggleRotate = () => {
-    isRotated = !isRotated;
     document.getElementById('board').classList.toggle('rotated');
     document.getElementById('main-container').classList.toggle('rotated');
 };
